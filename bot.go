@@ -155,11 +155,11 @@ func (b *Bot) Start() {
 		case upd := <-b.Updates:
 			b.incomingUpdate(&upd)
 
-		// call to stop polling
+			// call to stop polling
 		case <-b.stop:
 			stopPoller <- struct{}{}
 
-		// polling has stopped
+			// polling has stopped
 		case <-stopPoller:
 			return
 		}
@@ -484,24 +484,30 @@ func (b *Bot) Send(to Recipient, what interface{}, options ...interface{}) (*Mes
 // From all existing options, it only supports telebot.Silent.
 func (b *Bot) SendAlbum(to Recipient, a Album, options ...interface{}) ([]Message, error) {
 	media := make([]string, len(a))
-	files := make(map[string]string)
+	files := make(map[string]File)
 
 	for i, x := range a {
-		var mediaRepr string
 		var jsonRepr []byte
 
-		f := x.MediaFile()
+		getRepr := func(f *File, uniqueName string) (string, error) {
+			switch {
+			case f == nil:
+				return "", errors.Errorf("telebot: album entry #%v is nil", uniqueName)
+			case f.InCloud():
+				return f.FileID, nil
+			case f.FileURL != "":
+				return f.FileURL, nil
+			case f.OnDisk() || f.FileReader != nil:
+				files[uniqueName] = *f
+				return fmt.Sprintf("attach://%v", uniqueName), nil
+			default:
+				return "", errors.Errorf("telebot: album entry #%v doesn't exist anywhere", uniqueName)
+			}
+		}
 
-		if f.InCloud() {
-			mediaRepr = f.FileID
-		} else if f.FileURL != "" {
-			mediaRepr = f.FileURL
-		} else if f.OnDisk() {
-			mediaRepr = fmt.Sprintf("attach://%d", i)
-			files[strconv.Itoa(i)] = f.FileLocal
-		} else {
-			return nil, errors.Errorf(
-				"telebot: album entry #%d doesn't exist anywhere", i)
+		mediaRepr, err := getRepr(x.MediaFile(), strconv.Itoa(i))
+		if err != nil {
+			return nil, err
 		}
 
 		switch y := x.(type) {
@@ -516,6 +522,16 @@ func (b *Bot) SendAlbum(to Recipient, a Album, options ...interface{}) ([]Messag
 				mediaRepr,
 			})
 		case *Video:
+			var thumbRepr string
+
+			if y.Thumbnail != nil {
+				var err error
+				thumbRepr, err = getRepr(&y.Thumbnail.File, "thumb_"+strconv.Itoa(i))
+				if err != nil {
+					return nil, err
+				}
+			}
+
 			jsonRepr, _ = json.Marshal(struct {
 				Type              string `json:"type"`
 				Caption           string `json:"caption"`
@@ -524,6 +540,7 @@ func (b *Bot) SendAlbum(to Recipient, a Album, options ...interface{}) ([]Messag
 				Height            int    `json:"height,omitempty"`
 				Duration          int    `json:"duration,omitempty"`
 				SupportsStreaming bool   `json:"supports_streaming,omitempty"`
+				Thumbnail         string `json:"thumb,omitempty"`
 			}{
 				"video",
 				y.Caption,
@@ -532,6 +549,7 @@ func (b *Bot) SendAlbum(to Recipient, a Album, options ...interface{}) ([]Messag
 				y.Height,
 				y.Duration,
 				y.SupportsStreaming,
+				thumbRepr,
 			})
 		default:
 			return nil, errors.Errorf("telebot: album entry #%d is not valid", i)
@@ -939,8 +957,7 @@ func (b *Bot) SetGroupPhoto(chat *Chat, p *Photo) error {
 		"chat_id": chat.Recipient(),
 	}
 
-	respJSON, err := b.sendFiles("setChatPhoto",
-		map[string]string{"photo": p.FileLocal}, params)
+	respJSON, err := b.sendFiles("setChatPhoto", map[string]File{"photo": p.File}, params)
 	if err != nil {
 		return err
 	}
