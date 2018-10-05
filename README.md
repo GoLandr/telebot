@@ -5,7 +5,7 @@
 [![Travis](https://travis-ci.org/tucnak/telebot.svg?branch=v2)](https://travis-ci.org/tucnak/telebot)
 
 ```bash
-go get -u gopkg.in/tucnak/telebot.v2
+go get -u github.com/GoLandr/telebot.v2
 ```
 
 * [Overview](#overview)
@@ -46,7 +46,7 @@ import (
 	"time"
 	"log"
 
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "github.com/GoLandr/telebot.v2"
 )
 
 func main() {
