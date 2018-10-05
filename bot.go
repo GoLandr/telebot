@@ -685,7 +685,7 @@ func (b *Bot) Edit(message Editable, what interface{}, options ...interface{}) (
 // EditCaption used to edit already sent photo caption with known recepient and message id.
 //
 // On success, returns edited message object
-func (b *Bot) EditCaption(originalMsg Editable, caption string) (*Message, error) {
+func (b *Bot) EditCaption(originalMsg Editable, caption string, options ...interface{}) (*Message, error) {
 	messageID, chatID := originalMsg.MessageSig()
 
 	params := map[string]string{"caption": caption}
@@ -698,11 +698,66 @@ func (b *Bot) EditCaption(originalMsg Editable, caption string) (*Message, error
 		params["message_id"] = messageID
 	}
 
+	sendOpts := extractOptions(options)
+	embedSendOptions(params, sendOpts)
+
 	respJSON, err := b.Raw("editMessageCaption", params)
 	if err != nil {
 		return nil, err
 	}
 
+	return extractMsgResponse(respJSON)
+}
+
+// EditMedia used to edit already sent media with known recepient and message id.
+//
+// On success, returns edited message object
+func (b *Bot) EditMedia(originalMsg Editable, media InputMedia, options ...interface{}) (*Message, error) {
+	messageID, chatID := originalMsg.MessageSig()
+	//params := map[string]string{"media": media}
+	params := map[string]string{}
+	// if inline message
+	if chatID == 0 {
+		params["inline_message_id"] = messageID
+	} else {
+		params["chat_id"] = strconv.FormatInt(chatID, 10)
+		params["message_id"] = messageID
+	}
+	if media.MediaFile().InCloud() {
+		params["media"] = media.MediaFile().FileID
+	} else if media.MediaFile().FileURL != "" {
+		params["media"] = media.MediaFile().FileURL
+	} else {
+		params["media"] = media.MediaFile().FileLocal
+	}
+	sendOpts := extractOptions(options)
+	embedSendOptions(params, sendOpts)
+	respJSON, err := b.Raw("editMessageMedia", params)
+	if err != nil {
+		return nil, err
+	}
+	return extractMsgResponse(respJSON)
+}
+
+// EditReplyMarkup used to edit already sent msg ReplyMarkup with known recepient and message id.
+//
+// On success, returns edited message object
+func (b *Bot) EditReplyMarkup(originalMsg Editable, options ...interface{}) (*Message, error) {
+	messageID, chatID := originalMsg.MessageSig()
+	params := map[string]string{}
+	// if inline message
+	if chatID == 0 {
+		params["inline_message_id"] = messageID
+	} else {
+		params["chat_id"] = strconv.FormatInt(chatID, 10)
+		params["message_id"] = messageID
+	}
+	sendOpts := extractOptions(options)
+	embedSendOptions(params, sendOpts)
+	respJSON, err := b.Raw("editMessageReplyMarkup", params)
+	if err != nil {
+		return nil, err
+	}
 	return extractMsgResponse(respJSON)
 }
 
@@ -1111,7 +1166,7 @@ func (b *Bot) ProfilePhotosOf(user *User) ([]Photo, error) {
 	}
 
 	var resp struct {
-		Ok     bool
+		Ok bool
 		Result struct {
 			Count  int     `json:"total_count"`
 			Photos []Photo `json:"photos"`
